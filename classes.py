@@ -1,10 +1,11 @@
 class PBN:
 
-    def __init__(self, name) -> None:
+    def __init__(self, name, dag_pbn_path) -> None:
         self.name = name
         self.dags = []
         self.resources = []
         self.tasks = []
+        self.dag_pbn_path = dag_pbn_path
 
     def add_dag(self, dag):
         dag.pbn = self
