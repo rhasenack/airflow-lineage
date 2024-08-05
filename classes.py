@@ -1,3 +1,7 @@
+import sqlparse
+import re
+
+
 class PBN:
     def __str__(self):
         return f"PBN named {self.name} with {len(self.dags)} dags"
@@ -52,6 +56,7 @@ class Dag:
     def __init__(self, name) -> None:
         self.name = name
         self.pbn = None
+        self.resource = None
         self.table_lists = {}
         self.dataset_lists = {}
         self.project_lists = {}
@@ -77,10 +82,77 @@ class Task:
         self.dag = None
         self.type = type
         self.parameters = {}
+        self.source_tables = []
 
     def set_parameters(self, parameters: dict):
-        for key, value in parameters.items():
-            self.parameters[key] = value
+        for dict_key, value in parameters.items():
+            setattr(self, dict_key, value)
+
+    def extract_table_name(self, token_list):
+        for token in token_list:
+            if isinstance(token, sqlparse.sql.Identifier):
+                return token.get_real_name()
+            elif isinstance(token, sqlparse.sql.IdentifierList):
+                for identifier in token.get_identifiers():
+                    return identifier.get_real_name()
+        return None
+
+    def define_dest_table(self):
+        if self.resource is None:
+            print("Resource not assinged to task")
+            return
+
+        if hasattr(self, "dest_table"):
+            print("destination table already set")
+            return
+
+        else:
+            sql = self.resource.script_content
+            regexp = re.compile(
+                r".*?(INSERT|UPDATE|DELETE|MERGE|CREATE .+?TABLE).+?\s+.?(`.+?`)",
+                flags=re.S | re.I,
+            )
+
+            match = re.match(regexp, sql)
+
+            dml_type = match.__getitem__(1)
+            self.type = dml_type
+
+            det_path_string = match.__getitem__(2)
+
+            tbl_regexp = re.compile(
+                r"\`_project-\d{1,2}_\._dataset-\d{1,2}_\.(_table-\d{1,2}_|.+?)\`"
+            )
+
+            match = re.match(tbl_regexp, det_path_string)
+            dest_table_string = match.__getitem__(1)
+            if "_table-" in dest_table_string:
+                self.dest_table = self.dag.table_lists[self.table_list][
+                    dest_table_string
+                ]
+            else:
+                self.dest_table = dest_table_string
+
+    def define_source_tables(self):
+        if self.resource is None:
+            print("Resource not assinged to task")
+            return
+
+        else:
+            sql = self.resource.script_content
+            regexp = re.compile(
+                r"\`_project-\d{1,2}_\._dataset-\d{1,2}_\.(_table-\d{1,2}_|.+?)\`"
+            )
+
+            matches = re.findall(regexp, sql)
+
+            for match in matches:
+                if "_table-" in match:
+                    self.source_tables.append(
+                        self.dag.table_lists[self.table_list][match]
+                    )
+                else:
+                    self.dest_table = match
 
 
 # if it's a dml script, store: dest_table, file_name, task_id, write_disposition, table_list)
