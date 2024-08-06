@@ -1,4 +1,3 @@
-import sqlparse
 import re
 
 
@@ -88,15 +87,6 @@ class Task:
         for dict_key, value in parameters.items():
             setattr(self, dict_key, value)
 
-    def extract_table_name(self, token_list):
-        for token in token_list:
-            if isinstance(token, sqlparse.sql.Identifier):
-                return token.get_real_name()
-            elif isinstance(token, sqlparse.sql.IdentifierList):
-                for identifier in token.get_identifiers():
-                    return identifier.get_real_name()
-        return None
-
     def define_dest_table(self):
         if self.resource is None:
             print("Resource not assinged to task")
@@ -152,7 +142,7 @@ class Task:
                         self.dag.table_lists[self.table_list][match]
                     )
                 else:
-                    self.dest_table = match
+                    self.source_tables.append(match)
 
 
 # if it's a dml script, store: dest_table, file_name, task_id, write_disposition, table_list)

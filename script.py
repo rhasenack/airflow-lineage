@@ -4,7 +4,7 @@ import os
 import re
 import ast
 
-# import networkx as nxpi
+import networkx as nxpi
 from pyvis.network import Network
 
 
@@ -126,21 +126,6 @@ for pbn in PBNs:
             pbn.add_resource(resource)
             resources.append(resource)
 
-    # Iterate to get Resources
-
-# print(PBNs)
-
-# for pbn in PBNs:
-#     pbn.
-
-## Each task in a dag must have a destination table and one or more source tables.
-## The destination table can be either:
-## 1. The parameter that is passed as destionation table to the task
-## 2. The table at the top (DML statement) of the raw SQL script
-
-## To Do:
-
-## 1. Associate the resource to each of the tasks.
 for pbn in PBNs:
     for dag in pbn.dags:
         for task in dag.tasks:
@@ -155,3 +140,77 @@ for task in tasks:
     task.define_dest_table()
     task.resource.dest_table = task.dest_table
     task.define_source_tables()
+
+
+net = Network(
+    height="750px",
+    width="100%",
+    bgcolor="#222222",
+    font_color="white",
+    select_menu=True,
+)
+# net.barnes_hut()
+
+sources_added = []
+targets_added = []
+
+for pbn in PBNs:
+    for dag in pbn.dags:
+        for task in dag.tasks:
+            target = task.dest_table
+            sources = task.source_tables
+
+            if target not in targets_added:
+                net.add_node(target, target, title=target, group=pbn.name)
+                targets_added.append(target)
+
+            for source in sources:
+                if source not in sources_added:
+                    net.add_node(source, source, title=source, group=pbn.name)
+                    sources_added.append(source)
+
+                net.add_edge(source, target)
+
+# net.show_buttons()
+
+
+net.set_options(
+    """ const options = {
+  "nodes": {
+    "borderWidth": 1,
+    "borderWidthSelected": 2,
+    "opacity": 1,
+    "size": 25
+  },
+  "edges": {
+    "arrows": {
+      "to": {
+        "enabled": true
+      }
+    },
+    "color": {
+      "inherit": true
+    },
+    "selfReferenceSize": null,
+    "selfReference": {
+      "angle": 0.7853981633974483
+    },
+    "smooth": false
+  },
+  "layout": {
+    "hierarchical": {
+      "enabled": true
+    }
+  },
+  "physics": {
+    "hierarchicalRepulsion": {
+      "centralGravity": 0,
+      "avoidOverlap": null
+    },
+    "minVelocity": 0.75,
+    "solver": "hierarchicalRepulsion"
+  }
+} """
+)
+
+net.show("test.html", notebook=False)
