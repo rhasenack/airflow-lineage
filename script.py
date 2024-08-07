@@ -30,7 +30,7 @@ dags_folder = os.path.join(start_path, "dags")
 resources_folder = os.path.join(start_path, "resources//bq_scripts")
 
 
-## For each one of these folders, create an instance of the PBN class
+## Create an instance of the PBN class for each relevant folder
 for folder in os.listdir(dags_folder):
     if folder[:9] == "data-core":
         pbn = PBN(
@@ -46,17 +46,18 @@ for folder in os.listdir(dags_folder):
 
 ### CLASS INSTANCES SETUP ###
 
-## Go into each of these PBNs and go over each file. Each one of them will be a DAG class instance. Add DAG to the PBN.
+## Iterate over each PBN and process each file to create DAG class instances. Add each DAG to the corresponding PBN.
 for pbn in PBNs:
+    print(f"Processing {pbn.name}")
 
-    # For the MVP we're ignoring this one since the structure is a bit different from the rest.
+    # For the MVP, ignore this one since the structure is different from the rest.
     if pbn.name == "data-core-seprojectmanagement":
         continue
 
     # Iterate to get DAGs and Tasks
     for filename in os.listdir(pbn.dag_pbn_path):
 
-        # Ignorint DQ and BAckfill DAGs for now
+        # Ignoring DQ and Backfill DAGs for now
         if (
             filename.endswith(".py")
             and "-dq" not in filename
@@ -65,8 +66,8 @@ for pbn in PBNs:
             # Create DAG instance
             dag = Dag(name=filename)
 
-            # Walk the python script and find assignation to variables and relevant tasks.
-            # For this we use the ast module in python. More info here: https://docs.python.org/3/library/ast.html
+            # Parse the Python script to find variable assignments and relevant tasks.
+            # Using the ast module in Python. More info: https://docs.python.org/3/library/ast.html
             file_path = os.path.join(pbn.dag_pbn_path, filename)
             with open(file_path, "r") as file:
                 tree = ast.parse(file.read(), filename=file_path)
@@ -75,17 +76,19 @@ for pbn in PBNs:
             bigquery_parameters = {}
 
             for node in ast.walk(tree):
-                # If is an assignation to variable
+                # If is an assignment to variable
                 if isinstance(node, ast.Assign):
 
                     for target in node.targets:
-                        # If variable name is a string, store it in var_name
+
+                        # If the variable name is a ast.Name type, store it in var_name
                         if isinstance(target, ast.Name):
                             var_name = target.id
 
                             regexp = re.compile(r".+?\[[\'\"](.+?)[\'\"]\]")
-                            # If variable contains BQ_PROJECT or BQ_DATASET, we assume it is fetched from BI_OPERATIONS_SALSEFORCE_PARAMETERs.
-                            # Here we're using regex to extract the key and then looking for this key in the PARAMETERS to get the final value attributed to the variable
+
+                            # If the variable contains BQ_PROJECT or BQ_DATASET, assume it is fetched from BI_OPERATIONS_SALESFORCE_PARAMETERS.
+                            # Using regex to extract the key and then looking for this key in the PARAMETERS to get the final value attributed to the variable
                             if "BQ_PROJECT" in target.id or "BQ_DATASET" in target.id:
                                 bigquery_parameters[var_name] = (
                                     AIRFLOW_VAR_BI_OPERATIONS_SALESFORCE_PARAMETERS[
@@ -93,7 +96,7 @@ for pbn in PBNs:
                                     ]
                                 )
 
-                            ## In caselog dag, the format is different. Hard code the dataset tables, else calculate it from files.
+                            ## In caselog DAG, the format is different. Hard code the dataset tables, else calculate it from files.
                             if dag.name in [
                                 "data-core-secaselog-ldw.py",
                                 "data-core-secaselog-xpl.py",
@@ -121,8 +124,8 @@ for pbn in PBNs:
                                     "_dataset-20_": "silver_read",
                                 }
 
-                            # Here wefetch the dataset_lists that will be passed to the DAG's tasks.
-                            # For each ofne of the dataset_list and table_lists, a dictionary is created and stored in the dag instance
+                            # Fetch the dataset_lists that will be passed to the DAG's tasks.
+                            # For each dataset_list and table_list, a dictionary is created and stored in the DAG instance
                             else:
                                 if "dataset_list" in target.id:
                                     dataset_lists_definition[var_name] = {}
@@ -130,19 +133,19 @@ for pbn in PBNs:
                                     for key, value in zip(
                                         node.value.keys, node.value.values
                                     ):
-                                        # if value is a name (other variable), get it's value from bigquery_parameters
+                                        # if the value is a name (other variable), get its value from bigquery_parameters
                                         if isinstance(value, ast.Name):
                                             dataset_lists_definition[var_name][
                                                 key.s
                                             ] = bigquery_parameters[value.id]
 
-                                        # if value is a constant (string), store it with value.value
+                                        # if the value is a constant (string), store it with value.value
                                         if isinstance(value, ast.Constant):
                                             dataset_lists_definition[var_name][
                                                 key.s
                                             ] = value.value
 
-                                        # if value is a subscript (variable["key"]), get the value from PAIRFLOW_VAR_BI_OPERATIONS_SALESFORCE_PARAMETERS
+                                        # if the value is a subscript (variable["key"]), get the value from AIRFLOW_VAR_BI_OPERATIONS_SALESFORCE_PARAMETERS
                                         if isinstance(value, ast.Subscript):
                                             dataset_lists_definition[var_name][
                                                 key.s
@@ -153,13 +156,13 @@ for pbn in PBNs:
                                                 )[0]
                                             ]
 
-                            # Table list a dict with string values, so we can simply use ast.literal_eval
+                            # Table list is a dict with string values, so we can simply use ast.literal_eval
                             if "table_list" in target.id:
                                 table_lists_definition[var_name] = ast.literal_eval(
                                     node.value
                                 )
 
-                            # if it is calling a function and function name in 'run_dml_script' or 'run_raw_sql'or "run_copy_table_dml" we want to process it to get the destination and sources tables.
+                            # If it is calling a function and the function name is 'run_dml_script', 'run_raw_sql', or 'run_copy_table_dml', we want to process it to get the destination and source tables
                             if (
                                 isinstance(node, ast.Assign)
                                 and isinstance(node.value, ast.Call)
@@ -177,7 +180,7 @@ for pbn in PBNs:
 
                                 parameters = {}
 
-                                # for each argument passed to the function, create an attribute in the task instance.
+                                # For each argument passed to the function, create an attribute in the task instance
                                 for keyword in node.value.keywords:
                                     if isinstance(keyword.value, ast.Name):
                                         parameters[keyword.arg] = keyword.value.id
@@ -192,22 +195,22 @@ for pbn in PBNs:
                                                     )
                                 task.set_parameters(parameters=parameters)
 
-                                # Aassign the DAG that has the task to the task instance
+                                # Assign the DAG that has the task to the task instance
                                 task.dag = dag
 
-                                # If the task points to a file_name (which is the sql script), build the resource path
+                                # If the task points to a file_name (which is the SQL script), build the resource path
                                 if hasattr(task, "file_name"):
                                     task.resource_path = os.path.join(
                                         pbn.resources_pbn_path,
                                         task.file_name.replace("/", "", 1),
                                     )
-                                # Add task to the DAG's taks list
+                                # Add task to the DAG's task list
                                 dag.add_task(task=task)
 
                                 # Add task to the task lists
                                 tasks.append(task)
 
-            # Write the calculated parameters to the instance variables.
+            # Write the calculated parameters to the instance variables
             dag.table_lists = table_lists_definition
             dag.dataset_lists = dataset_lists_definition
             dag.bq_parameters = bigquery_parameters
@@ -218,7 +221,7 @@ for pbn in PBNs:
             # Add dag to the PBN dags
             pbn.add_dag(dag)
 
-    # For each resource in the PBN, create a Resource instance and add it to the PBN ubstabce
+    # For each resource in the PBN, create a Resource instance and add it to the PBN instance
     for filename in os.listdir(pbn.resources_pbn_path):
         if filename.endswith(".sql"):
             with open(os.path.join(pbn.resources_pbn_path, filename)) as f:
@@ -234,7 +237,7 @@ for pbn in PBNs:
             resources.append(resource)
 
 
-# Assignt he resource for each one of the taks. From this resource assigned, define the destination table and the source tables.
+# Assign the resource for each task. From this assigned resource, define the destination table and the source tables
 for pbn in PBNs:
     for dag in pbn.dags:
         for task in dag.tasks:
@@ -288,9 +291,15 @@ if global_view is False:
             for task in dag.tasks:
                 target = task.dest_table
                 sources = task.source_tables
+                shapes = {
+                    "INCREMENTAL": "triangleDown",
+                    "FULL REFRESH": "triangle",
+                    "DELETE": "diamond",
+                    "COPY": "hexagon",
+                }
 
                 if target not in targets_added:
-                    title_string = f"<b>PBN:</b> {pbn.name}<br><b>DAG:</b> {dag.name}<br><b>Table:</b> {target}"
+                    title_string = f"<b>PBN:</b> {pbn.name}<br><b>DAG:</b> {dag.name}<br><b>Table:</b> {target}<br><b>WRITE DISPOSITION:</b> {task.write_disposition}"
                     target_id = pbn.name + "-" + target
                     net.add_node(
                         n_id=target_id,
@@ -298,6 +307,7 @@ if global_view is False:
                         title=title_string,
                         group=dag.name,
                         dag=dag.name,
+                        shape=shapes[task.write_disposition],
                     )
                     targets_added.append(target_id)
 
@@ -374,7 +384,3 @@ def add_physics_stop_to_html(filepath):
 
 net.write_html("test.html", notebook=False)
 add_physics_stop_to_html("test.html")
-
-## Todo
-## 1. Organize Script
-## 2. consider tasks that call run_copy_table_dml function

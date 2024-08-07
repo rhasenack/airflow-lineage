@@ -46,10 +46,6 @@ class Resource:
         self.script_content = script_content
         self.source_tables = []
 
-    def get_source_tables(self):
-        """This function shuld find all FROM and JOIN clauses in the script content of the resource and get the tablesc"""
-        return
-
 
 class Dag:
     def __init__(self, name) -> None:
@@ -80,9 +76,12 @@ class Task:
             setattr(self, dict_key, value)
 
     def define_dest_table(self):
+        """Define the destination table at the task. Depending on the task, it can be a direct parameter of the function or it might have to be fetched from the SQL script that is called
+        A given task will have only one dest_table"""
 
+        # If there's a function parameter called dest_table, this is directly the task's dest_table
         if hasattr(self, "dest_table"):
-            print("destination table already set")
+            # print("destination table already set")
             dest_dataset = (
                 self.dag.bq_parameters[self.dest_dataset]
                 if "BQ_" in self.dest_dataset
@@ -90,12 +89,25 @@ class Task:
             )
             dest_table = self.dest_table
             self.dest_table = dest_dataset + "." + self.dest_table
+
+            # Set DML type
+            if self.type != "run_copy_table_dml":
+                self.write_disposition = (
+                    "INCREMENTAL"
+                    if self.write_disposition == "WRITE_APPEND"
+                    else "FULL REFRESH"
+                )
+            else:
+                self.write_disposition = "COPY"
+
             return
 
+        # If there's no resoucre assigned to the task, we're unable to get the dest_table from the sql script. This, in theory, shouldn't happen.
         if not hasattr(self, "resource") or self.resource is None:
             print("Resource not assinged to task")
             return
 
+        # If not in previous scenarios, he table is fetched by looking for dml statements and the tables with REGEX.
         else:
             sql = self.resource.script_content
             regexp = re.compile(
@@ -105,8 +117,8 @@ class Task:
 
             match = re.match(regexp, sql)
 
-            dml_type = match.__getitem__(1)
-            self.type = dml_type
+            dml_statement = match.__getitem__(1)
+            self.dml_statement = dml_statement
 
             det_path_string = match.__getitem__(2)
 
@@ -118,13 +130,6 @@ class Task:
             dest_project_string = match.__getitem__(1)
             dest_dataset_string = match.__getitem__(2)
             dest_table_string = match.__getitem__(3)
-
-            # if "_project-" in dest_project_string:
-            #     dest_project = self.dag.table_lists[self.table_list][
-            #         dest_table_string
-            #     ]
-            # else:
-            #     dest_project = dest_table_string
 
             if "_dataset-" in dest_dataset_string:
                 dest_dataset = self.dag.dataset_lists[self.dataset_list][
@@ -140,16 +145,31 @@ class Task:
 
             self.dest_table = dest_dataset + "." + dest_table
 
-    def define_source_tables(self):
+        # Set Target Type
+        if any(x in self.dml_statement.upper() for x in ["CREATE"]):
+            self.write_disposition = "FULL REFRESH"
+        elif any(
+            x in self.dml_statement.upper() for x in ["INSERT", "UPDATE", "MERGE"]
+        ):
+            self.write_disposition = "INCREMENTAL"
+        elif any(x in self.dml_statement.upper() for x in ["DELETE"]):
+            self.write_disposition = "DELETE"
 
+    def define_source_tables(self):
+        """Define the source tables of the task. Depending on the task, it can be a direct parameter of the function or it might have to be fetched from the SQL script.
+        A given task will have only one destination, but might have several sources"""
+
+        # If there's a function parameter called dest_table, this is directly the task's dest_table
         if hasattr(self, "source_table"):
             self.source_tables.append(self.source_dataset + "." + self.source_table)
             return
 
+        # If there's no resoucre assigned to the task, we're unable to get the source_tables from the sql script. This, in theory, shouldn't happen.
         if self.resource is None:
             print("Resource not assinged to task")
             return
 
+        # Else, using regex, we get the tables that are referenced in the SQL script.
         sql = self.resource.script_content
         regexp = re.compile(
             r"\`(_project-\d{1,2}_|.+?)\.(_dataset-\d{1,2}_|.+?)\.(_table-\d{1,2}_|.+?)\`"
@@ -184,7 +204,6 @@ class Task:
             else:
                 source_table = source_table_string
 
-            self.source_tables.append(source_dataset + "." + source_table)
-
-
-# if it's a dml script, store: source_table, file_name, task_id, write_disposition, table_list)
+            ## If source table is the same as the dest table, ignore
+            if source_dataset + "." + source_table != self.dest_table:
+                self.source_tables.append(source_dataset + "." + source_table)
