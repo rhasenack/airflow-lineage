@@ -80,9 +80,6 @@ class Task:
             setattr(self, dict_key, value)
 
     def define_dest_table(self):
-        if self.resource is None:
-            print("Resource not assinged to task")
-            return
 
         if hasattr(self, "dest_table"):
             print("destination table already set")
@@ -93,6 +90,10 @@ class Task:
             )
             dest_table = self.dest_table
             self.dest_table = dest_dataset + "." + self.dest_table
+            return
+
+        if not hasattr(self, "resource") or self.resource is None:
+            print("Resource not assinged to task")
             return
 
         else:
@@ -140,46 +141,50 @@ class Task:
             self.dest_table = dest_dataset + "." + dest_table
 
     def define_source_tables(self):
+
+        if hasattr(self, "source_table"):
+            self.source_tables.append(self.source_dataset + "." + self.source_table)
+            return
+
         if self.resource is None:
             print("Resource not assinged to task")
             return
 
-        else:
-            sql = self.resource.script_content
-            regexp = re.compile(
-                r"\`(_project-\d{1,2}_|.+?)\.(_dataset-\d{1,2}_|.+?)\.(_table-\d{1,2}_|.+?)\`"
-            )
+        sql = self.resource.script_content
+        regexp = re.compile(
+            r"\`(_project-\d{1,2}_|.+?)\.(_dataset-\d{1,2}_|.+?)\.(_table-\d{1,2}_|.+?)\`"
+        )
 
-            matches = re.findall(regexp, sql)
+        matches = re.findall(regexp, sql)
 
-            for match in matches:
-                source_project_string = match.__getitem__(0)
-                source_dataset_string = match.__getitem__(1)
-                source_table_string = match.__getitem__(2)
+        for match in matches:
+            source_project_string = match.__getitem__(0)
+            source_dataset_string = match.__getitem__(1)
+            source_table_string = match.__getitem__(2)
 
-                if "_dataset-" in source_dataset_string:
-                    if source_dataset_string == "_dataset-dw_":
+            if "_dataset-" in source_dataset_string:
+                if source_dataset_string == "_dataset-dw_":
 
-                        source_dataset = "gold_raw"
-                    else:
-                        source_dataset = self.dag.dataset_lists[self.dataset_list][
-                            source_dataset_string
-                        ]
+                    source_dataset = "gold_raw"
                 else:
-                    source_dataset = source_dataset_string
+                    source_dataset = self.dag.dataset_lists[self.dataset_list][
+                        source_dataset_string
+                    ]
+            else:
+                source_dataset = source_dataset_string
 
-                if "_table-" in source_table_string:
+            if "_table-" in source_table_string:
 
-                    if source_table_string == "_table_name_dest_":
-                        source_table = "dimcontactgroup_stg_all"
-                    else:
-                        source_table = self.dag.table_lists[self.table_list][
-                            source_table_string
-                        ]
+                if source_table_string == "_table_name_dest_":
+                    source_table = "dimcontactgroup_stg_all"
                 else:
-                    source_table = source_table_string
+                    source_table = self.dag.table_lists[self.table_list][
+                        source_table_string
+                    ]
+            else:
+                source_table = source_table_string
 
-                self.source_tables.append(source_dataset + "." + source_table)
+            self.source_tables.append(source_dataset + "." + source_table)
 
 
 # if it's a dml script, store: source_table, file_name, task_id, write_disposition, table_list)
