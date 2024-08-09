@@ -4,9 +4,10 @@ import os
 import re
 import ast
 import json
-import networkx as nxpi
+import networkx as nx
 from pyvis.network import Network
 
+# from bs4 import BeautifulSoup
 
 ## Set Start Folder
 start_path = Path(
@@ -250,14 +251,12 @@ for pbn in PBNs:
             task.define_dest_table()
             task.define_source_tables()
 
-
 # Create Network Instance
 net = Network(
-    height="750px",
+    height="95vh",
     width="100%",
-    bgcolor="#222222",
-    font_color="white",
-    select_menu=True,
+    bgcolor="#ffffff",
+    # select_menu=True,
     filter_menu=True,
 )
 
@@ -285,6 +284,24 @@ if global_view:
 
                     net.add_edge(source, target)
 
+import random
+
+
+def pastel_color():
+    r = lambda: random.randint(128, 255)
+    return "#{:02X}{:02X}{:02X}".format(r(), r(), r())
+
+
+# Dictionary to store group colors
+group_colors = {}
+
+
+def get_group_color(group):
+    if group not in group_colors:
+        group_colors[group] = pastel_color()
+    return group_colors[group]
+
+
 if global_view is False:
     for pbn in PBNs:
         for dag in pbn.dags:
@@ -299,15 +316,22 @@ if global_view is False:
                 }
 
                 if target not in targets_added:
-                    title_string = f"<b>PBN:</b> {pbn.name}<br><b>DAG:</b> {dag.name}<br><b>Table:</b> {target}<br><b>WRITE DISPOSITION:</b> {task.write_disposition}"
+                    title_string = f"<b>PBN:</b> {pbn.name}<br><b>DAG:</b> {dag.name}<br><b>Table:</b> {target}<br><b>Write Disposition:</b> {task.write_disposition}"
                     target_id = pbn.name + "-" + target
                     net.add_node(
                         n_id=target_id,
                         label=target,
+                        table_name=target,
                         title=title_string,
-                        group=dag.name,
+                        # group=dag.name,
                         dag=dag.name,
                         shape=shapes[task.write_disposition],
+                        pbn=pbn.name,
+                        table=target,
+                        size=25,
+                        color=(
+                            get_group_color(dag.name)
+                        ),  # Set color based on the group
                     )
                     targets_added.append(target_id)
 
@@ -321,26 +345,51 @@ if global_view is False:
                             break
 
                     title_string = f"<b>PBN:</b> {title_pbn}<br><b>DAG:</b> {group}<br><b>Table:</b> {source}"
-                    if source not in sources_added:
-                        source_id = pbn.name + "-" + source
+                    source_id = pbn.name + "-" + source
+                    if (
+                        source_id not in sources_added
+                        and source_id not in targets_added
+                        and not any(
+                            x == source_id
+                            for x in [
+                                pbn.name + "-" + task.dest_table for task in dag.tasks
+                            ]
+                        )
+                    ):
                         net.add_node(
                             n_id=source_id,
                             label=source,
+                            table_name=source,
                             title=title_string,
-                            group=group,
+                            # group=group,
                             dag=dag.name,
+                            pbn=pbn.name,
+                            table=source,
+                            size=15,
+                            opacity=0.8,
+                            color=(
+                                get_group_color(group) if group != "None" else "#d9d4d4"
+                            ),  # Set color based on the group
                         )
                         sources_added.append(source_id)
+        # break
 
+    for pbn in PBNs:
+        for dag in pbn.dags:
+            for task in dag.tasks:
+                target_id = pbn.name + "-" + task.dest_table
+                for source in task.source_tables:
+                    source_id = pbn.name + "-" + source
                     net.add_edge(source_id, target_id)
+        # break
 
+# net.show_buttons()
 net.set_options(
     """ const options = {
   "nodes": {
     "borderWidth": 1,
     "borderWidthSelected": 2,
-    "opacity": 1,
-    "size": 25
+    "opacity": 1
   },
   "edges": {
     "arrows": {
@@ -356,11 +405,6 @@ net.set_options(
       "angle": 0.7853981633974483
     },
     "smooth": false
-  },
-  "layout": {
-    "hierarchical": {
-      "enabled": true
-    }
   }
 } """
 )
@@ -382,5 +426,130 @@ def add_physics_stop_to_html(filepath):
         file.write(new_content)
 
 
+def add_table_selection_box(filepath):
+    with open(filepath, "r", encoding="utf-8") as file:
+        content = file.read()
+
+    # Search for the stabilizationIterationsDone event and insert the network.setOptions line
+    pattern = """<div class="card" style="width: 100%">"""
+    replacement = """<div class="card" style="width: 100%">            
+                <div id="select-menu" class="card-header">
+                    <div class="row no-gutters">
+                        <div class="col-10 pb-2">
+                            <select
+                            class="form-select"
+                            aria-label="Default select example"
+                            onchange="makeTableBigger([value]);"
+                            id="select-table"
+                            placeholder="Select a Table to Highlight"
+                            >
+                                <option selected>Select a Table to Highlight</option>                                
+                                
+                            </select>
+                        </div>
+                        <div class="col-2 pb-2">
+                            <button type="button" class="btn btn-primary btn-block" onclick="resetNodeSize();">Reset Selection</button>
+                        </div>
+                    </div>
+                </div>"""
+
+    new_content = content.replace(pattern, replacement)
+
+    pattern = """function htmlTitle(html) {
+            const container = document.createElement("div");
+            container.innerHTML = html;
+            return container;
+          };"""
+
+    replacement = """function htmlTitle(html) {
+            const container = document.createElement("div");
+            container.innerHTML = html;
+            return container;
+          };
+
+      let enlargedNodes = [];
+      let all_nodes = {};
+
+      function resetNodeSize() {
+        for (const id of enlargedNodes) {
+          size = all_nodes[id].originalSize;
+          nodes.update({ id: id, size: size });
+          enlargedNodes = [];
+        }
+      }
+
+      function getAllNodes() {
+        for (const [key, value] of Object.entries(network.body.nodes)) {
+          all_nodes[key] = {
+            tableName: value.options.table_name,
+            originalSize: value.baseSize,
+          };
+        }
+      }
+
+      function makeTableBigger(node) {
+        resetNodeSize();
+
+        // const result = Object.keys(all_nodes).filter(key, value)
+        const matchingKeys = Object.keys(all_nodes).filter(
+          (key) => all_nodes[key].tableName === node[0]
+        );
+
+        for (const id of matchingKeys) {
+          nodes.update({ id: id, size: 50 });
+          enlargedNodes.push(id);
+        }
+        // All others should go back to original size
+      }
+
+      function getNodeList() {
+        let distinct_tables = [];
+        for (const [key, value] of Object.entries(network.body.nodes)) {
+          if (!distinct_tables.includes(value.options.table_name)) {
+            distinct_tables.push(value.options.table_name);
+          }
+        }
+        return distinct_tables;
+      }
+
+      selectControl = new TomSelect("#select-table", {
+        valueField: "id",
+        labelField: "title",
+        searchField: "title",
+        create: false,
+        sortField: {
+          field: "text",
+          direction: "asc",
+        },
+      });
+
+      function populateSelectOptions() {
+        const selectNode = document.getElementById("select-node");
+        const nodes = getNodeList();
+
+        nodes.forEach((node) => {
+          selectControl.addOption({ id: node, title: node });
+        });
+      }
+
+      window.addEventListener(
+        "DOMContentLoaded",
+        function () {
+          populateSelectOptions();
+          getAllNodes();
+        },
+        false
+      );
+           """
+
+    new_content = new_content.replace(pattern, replacement)
+
+    # Write the modified content back to the file
+    with open(filepath, "w", encoding="utf-8") as file:
+        file.write(new_content)
+
+
+print("Writing HTML file")
 net.write_html("test.html", notebook=False)
 add_physics_stop_to_html("test.html")
+add_table_selection_box("test.html")
