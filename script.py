@@ -5,6 +5,7 @@ import re
 import ast
 import json
 import networkx as nx
+import random
 from pyvis.network import Network
 
 # from bs4 import BeautifulSoup
@@ -283,8 +284,6 @@ if global_view:
                         sources_added.append(source)
 
                     net.add_edge(source, target)
-
-import random
 
 
 def pastel_color():
