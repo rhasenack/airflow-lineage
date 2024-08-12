@@ -188,6 +188,10 @@ for pbn in PBNs:
                                         parameters[keyword.arg] = keyword.value.id
                                     if isinstance(keyword.value, ast.Constant):
                                         parameters[keyword.arg] = keyword.value.value
+                                    if isinstance(keyword.value, ast.BinOp):
+                                        parameters[keyword.arg] = (
+                                            keyword.value.left.value
+                                        )
                                     if isinstance(keyword.value, ast.JoinedStr):
                                         if keyword.arg == "file_name":
                                             for value in keyword.value.values:
@@ -315,7 +319,7 @@ if global_view is False:
                 }
 
                 if target not in targets_added:
-                    title_string = f"<b>PBN:</b> {pbn.name}<br><b>DAG:</b> {dag.name}<br><b>Table:</b> {target}<br><b>Write Disposition:</b> {task.write_disposition}"
+                    title_string = f"<b>PBN:</b> {pbn.name}<br><b>DAG:</b> {dag.name}<br><b>Table:</b> {target}<br><b>Write Disposition:</b> {task.write_disposition}<br><b>Task:</b> {task.task_id}"
                     target_id = pbn.name + "-" + target
                     net.add_node(
                         n_id=target_id,
