@@ -82,6 +82,10 @@ class Task:
         # If there's a function parameter called dest_table, this is directly the task's dest_table
         if hasattr(self, "dest_table"):
             # print("destination table already set")
+
+            if not hasattr(self, "dest_dataset"):
+                raise AttributeError("No dest_dataset defined")
+
             dest_dataset = (
                 self.dag.bq_parameters[self.dest_dataset]
                 if "BQ_" in self.dest_dataset
@@ -89,6 +93,12 @@ class Task:
             )
             dest_table = self.dest_table
             self.dest_table = dest_dataset + "." + self.dest_table
+
+            if self.type != "run_copy_table_dml":
+                if not hasattr(self, "write_disposition"):
+                    raise AttributeError("No write_disposition defined")
+                if self.write_disposition not in ["WRITE_APPEND", "WRITE_TRUNCATE"]:
+                    raise AttributeError("write_disposition incorrectly defined")
 
             # Set DML type
             if self.type != "run_copy_table_dml":
@@ -99,13 +109,11 @@ class Task:
                 )
             else:
                 self.write_disposition = "COPY"
-
             return
 
         # If there's no resoucre assigned to the task, we're unable to get the dest_table from the sql script. This, in theory, shouldn't happen.
         if not hasattr(self, "resource") or self.resource is None:
-            print("Resource not assinged to task")
-            return
+            raise AttributeError("No Resource Defined")
 
         # If not in previous scenarios, he table is fetched by looking for dml statements and the tables with REGEX.
         else:
@@ -159,15 +167,17 @@ class Task:
         """Define the source tables of the task. Depending on the task, it can be a direct parameter of the function or it might have to be fetched from the SQL script.
         A given task will have only one destination, but might have several sources"""
 
+        if not hasattr(self, "dest_table"):
+            raise AttributeError("No destination table set")
+
         # If there's a function parameter called dest_table, this is directly the task's dest_table
         if hasattr(self, "source_table"):
             self.source_tables.append(self.source_dataset + "." + self.source_table)
             return
 
         # If there's no resoucre assigned to the task, we're unable to get the source_tables from the sql script. This, in theory, shouldn't happen.
-        if self.resource is None:
-            print("Resource not assinged to task")
-            return
+        if not hasattr(self, "resource") or self.resource is None:
+            raise AttributeError("No Resource Defined")
 
         # Else, using regex, we get the tables that are referenced in the SQL script.
         sql = self.resource.script_content
