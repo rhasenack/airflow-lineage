@@ -182,8 +182,12 @@ class Task:
         # Else, using regex, we get the tables that are referenced in the SQL script.
         sql = self.resource.script_content
         regexp = re.compile(
-            r"\`(_project-\d{1,2}_|.+?)\.(_dataset-\d{1,2}_|.+?)\.(_table-\d{1,2}_|.+?)\`"
+            r"(?:\`{0,1}|\s)(_project-\d{1,2}_|\w+?)\.(_dataset-\d{1,2}_|\w+?)\.(_table-\d{1,2}_|\w+)(?:\`{0,1}|\s)"
         )
+
+        # Remove commented lines that shouldn't be consideres
+        rexep_commented = re.compile(r"(\-\-.+?\n)")
+        sql = re.sub(pattern=rexep_commented, repl="", string=sql)
 
         matches = re.findall(regexp, sql)
 

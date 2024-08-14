@@ -100,7 +100,78 @@ class TaskTest(TestCase):
 
         self.assertEqual(t.source_tables, ["ldw.fact_case"])
 
+    def test_define_source_tables_commented_line(self):
+        t = Task(name="Test", type="TaskType")
 
-## TESTS TO BUILD AND BUGS TO FIX:
-## 1. Check if line is comment and ignore source tables in the sql code
-## 2. Guarantee it works if there's no `` in table name.
+        # if resource doesn't exist, raise attribute error
+        self.assertRaises(AttributeError, t.define_dest_table)
+
+        # if resource is a dml query, get the correct source table
+        query = """
+        INSERT INTO `_project-1_._dataset-1_._table-1_` SELECT 1 FROM  `_project-1_._dataset-1_._table-1_`
+        INNER JOIN SELECT 2 FROM  `salesforce1.ldw.fact_case` ON 1=1
+        --INNER JOIN SELECT 2 FROM  `salesforce1.ldw.fact_caselog` ON 1=1
+        """
+        d = Dag("testDag")
+        d.dataset_lists = {"dataset_list": {"_dataset-1_": "dataset1"}}
+        d.table_lists = {"table_list": {"_table-1_": "table1", "_table-2_": "table2"}}
+        t.dag = d
+
+        r = Resource(name="r1", pbn="PBN", path="resource_path", script_content=query)
+        t.resource = r
+        t.dataset_list = "dataset_list"
+        t.table_list = "table_list"
+
+        t.define_dest_table()
+        t.define_source_tables()
+
+        self.assertNotEqual(t.source_tables, ["ldw.fact_case", "ldw.fact_caselog"])
+
+        t = Task(name="Test", type="TaskType")
+
+        query = """
+        INSERT INTO `_project-1_._dataset-1_._table-1_` SELECT 1 FROM  `_project-1_._dataset-1_._table-1_`
+        INNER JOIN SELECT 2 FROM  `salesforce1.ldw.fact_case` ON 1=1
+        INNER JOIN --`salesforce1.ldw.fact_caselog` ON 1=1
+        `salesforce1.ldw.fact_contact` ON 1=1
+        """
+        d = Dag("testDag")
+        d.dataset_lists = {"dataset_list": {"_dataset-1_": "dataset1"}}
+        d.table_lists = {"table_list": {"_table-1_": "table1", "_table-2_": "table2"}}
+        t.dag = d
+
+        r = Resource(name="r1", pbn="PBN", path="resource_path", script_content=query)
+        r.script_content = query
+        t.resource = r
+        t.dataset_list = "dataset_list"
+        t.table_list = "table_list"
+
+        t.define_dest_table()
+        t.define_source_tables()
+        self.assertEqual(t.source_tables, ["ldw.fact_case", "ldw.fact_contact"])
+
+    def test_define_source_tables_no_accent(self):
+
+        t = Task(name="Test", type="TaskType")
+
+        # if resource doesn't exist, raise attribute error
+        self.assertRaises(AttributeError, t.define_dest_table)
+
+        # if resource is a dml query, get the correct source table
+        query = """
+        INSERT INTO `_project-1_._dataset-1_._table-1_` SELECT 1 FROM  `_project-1_._dataset-1_._table-1_` 
+        INNER JOIN SELECT 2 FROM  `salesforce1.ldw.fact_case` ON 1=1
+        """
+        d = Dag("testDag")
+        d.dataset_lists = {"dataset_list": {"_dataset-1_": "dataset1"}}
+        d.table_lists = {"table_list": {"_table-1_": "table1", "_table-2_": "table2"}}
+        t.dag = d
+
+        r = Resource(name="r1", pbn="PBN", path="resource_path", script_content=query)
+        t.resource = r
+        t.dataset_list = "dataset_list"
+        t.table_list = "table_list"
+        t.define_dest_table()
+        t.define_source_tables()
+
+        self.assertEqual(t.source_tables, ["ldw.fact_case"])
