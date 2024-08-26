@@ -177,7 +177,7 @@ class Task:
                 if "BQ_" in self.dest_dataset
                 else self.dest_dataset
             )
-            self.source_tables.append(source_dataset + "." + self.source_table)
+            self.source_tables.append(self.source_dataset + "." + self.source_table)
             return
 
         # If there's no resoucre assigned to the task, we're unable to get the source_tables from the sql script. This, in theory, shouldn't happen.
@@ -226,3 +226,34 @@ class Task:
             ## If source table is the same as the dest table, ignore
             if source_dataset + "." + source_table != self.dest_table:
                 self.source_tables.append(source_dataset + "." + source_table)
+
+
+class View:
+    def __init__(self, table_name, sql_script) -> None:
+        self.table_name = table_name
+        self.sql_script = sql_script
+        self.source_tables = []
+        self.dataset = "workbench.ldw"
+
+    def define_source_tables(self):
+        regexp = re.compile(
+            r"(?:\-*?`)(.+?)\.(_dataset-\d{1,2}_|\w+?)\.(\w+)(?:\`{0,1}|\s)"
+        )
+
+        # Remove commented lines that shouldn't be consideres
+        rexep_commented = re.compile(r"(\-\-.+?\n)")
+        sql = re.sub(pattern=rexep_commented, repl="", string=self.sql_script)
+
+        matches = re.findall(regexp, sql)
+
+        for match in matches:
+            source_project_string = match.__getitem__(0)
+            source_dataset_string = match.__getitem__(1)
+            source_table_string = match.__getitem__(2)
+            self.source_tables.append(
+                source_project_string
+                + "."
+                + source_dataset_string
+                + "."
+                + source_table_string
+            )

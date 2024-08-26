@@ -1,4 +1,4 @@
-from classes import PBN, Resource, Task, Dag
+from classes import PBN, Resource, Task, Dag, View
 from pathlib import Path
 import os
 import re
@@ -587,4 +587,59 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+
+    from google.cloud import bigquery
+    from google.oauth2 import service_account
+
+    # main()
+    key_path = "client_secret.json"
+    credentials = service_account.Credentials.from_service_account_file(
+        key_path,
+        scopes=["https://www.googleapis.com/auth/cloud-platform"],
+    )
+    client = bigquery.Client(
+        credentials=credentials,
+        project="prd-data-teams-wfops-1",
+    )
+
+    query = """
+    SELECT table_name,view_definition
+    FROM `bigquery-analytics-workbench.ldw.INFORMATION_SCHEMA.VIEWS`
+    WHERE table_name IN ('fact_case', 'fact_contact', 'fact_contact_workload', 'fact_chat', 'fact_phone_call')
+    
+    UNION ALL 
+    
+    SELECT table_name,view_definition
+    FROM `bigquery-analytics-workbench.gold_read.INFORMATION_SCHEMA.VIEWS`
+    WHERE table_name IN ('fact_case', 'fact_contact', 'fact_contact_workload', 'fact_chat', 'fact_phone_call')
+    """
+    views = []
+    for row in list(client.query(query).result()):
+        view = View(table_name=row[0], sql_script=row[1])
+        view.define_source_tables()
+        views.append(view)
+
+        # Create Network Instance
+    net = Network(
+        height="95vh",
+        width="100%",
+        bgcolor="#ffffff",
+        # select_menu=True,
+        filter_menu=True,
+    )
+
+    sources_added = []
+    targets_added = []
+
+    for view in views:
+        net.add_node(
+            n_id=view.table_name,
+            label="bigquery-analytics-workbench.ldw." + view.table_name,
+            tview_name=view.table_name,
+            title=view.table_name,
+        )
+        for source in view.source_tables:
+            net.add_node(n_id=source, label=source, tview_name=source, title=source)
+
+            net.add_edge(view.table_name, source)
+    net.show("test2.html", notebook=False)
