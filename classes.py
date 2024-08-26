@@ -119,11 +119,11 @@ class Task:
         else:
             sql = self.resource.script_content
             regexp = re.compile(
-                r".*?(INSERT|UPDATE|DELETE|MERGE|CREATE .+?TABLE).+?\s+.?(`.+?`)",
+                r"(INSERT|UPDATE|DELETE|MERGE|CREATE .+?TABLE)\s+?.*?(`.+?`)",
                 flags=re.S | re.I,
             )
 
-            match = re.match(regexp, sql)
+            match = re.search(regexp, sql)
 
             dml_statement = match.__getitem__(1)
             self.dml_statement = dml_statement
