@@ -172,7 +172,12 @@ class Task:
 
         # If there's a function parameter called dest_table, this is directly the task's dest_table
         if hasattr(self, "source_table"):
-            self.source_tables.append(self.source_dataset + "." + self.source_table)
+            source_dataset = (
+                self.dag.bq_parameters[self.dest_dataset]
+                if "BQ_" in self.dest_dataset
+                else self.dest_dataset
+            )
+            self.source_tables.append(source_dataset + "." + self.source_table)
             return
 
         # If there's no resoucre assigned to the task, we're unable to get the source_tables from the sql script. This, in theory, shouldn't happen.
