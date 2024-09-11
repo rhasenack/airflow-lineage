@@ -259,7 +259,46 @@ def assign_resources_and_define_tables(PBNs, dags, tasks, resources):
                 task.define_source_tables()
 
 
-def draw_network(PBNs, dags, tasks, resources, global_view=False):
+def get_views():
+
+    from google.cloud import bigquery
+    from google.oauth2 import service_account
+
+    # main()
+    key_path = "client_secret.json"
+    credentials = service_account.Credentials.from_service_account_file(
+        key_path,
+        scopes=["https://www.googleapis.com/auth/cloud-platform"],
+    )
+    client = bigquery.Client(
+        credentials=credentials,
+        project="prd-data-teams-wfops-1",
+    )
+
+    query = """
+    SELECT table_name,view_definition
+    FROM `bigquery-analytics-workbench.ldw.INFORMATION_SCHEMA.VIEWS`
+    WHERE table_name IN ('fact_case', 'fact_contact', 'fact_contact_workload', 'fact_chat', 'fact_phone_call')
+    
+    UNION ALL 
+    
+    SELECT table_name,view_definition
+    FROM `bigquery-analytics-workbench.gold_read.INFORMATION_SCHEMA.VIEWS`
+    WHERE table_name IN ('fact_case', 'fact_contact', 'fact_contact_workload', 'fact_chat', 'fact_phone_call')
+    """
+
+    views = []
+    print("Fetching views from bigquery-analytics-workbench")
+    for row in list(client.query(query).result()):
+        view = View(table_name=row[0], sql_script=row[1])
+        view.define_source_tables()
+        views.append(view)
+    return views
+
+
+def draw_network(PBNs, dags, tasks, resources, views):
+    
+    print('Drawing Network')
 
     # Create Network Instance
     net = Network(
@@ -274,25 +313,6 @@ def draw_network(PBNs, dags, tasks, resources, global_view=False):
     targets_added = []
 
     # Flag do define if we want a global view (source and target nodes linked regardless of the DAG) or a DAG view (one tree per dag, tables might appear separetly in multiple dags)
-    global_view = False
-
-    if global_view:
-        for pbn in PBNs:
-            for dag in pbn.dags:
-                for task in dag.tasks:
-                    target = task.dest_table
-                    sources = task.source_tables
-
-                    if target not in targets_added:
-                        net.add_node(target, target, title=target, group=dag)
-                        targets_added.append(target)
-
-                    for source in sources:
-                        if source not in sources_added:
-                            net.add_node(source, source, title=source, group=dag)
-                            sources_added.append(source)
-
-                        net.add_edge(source, target)
 
     def pastel_color():
         r = lambda: random.randint(128, 255)
@@ -306,89 +326,141 @@ def draw_network(PBNs, dags, tasks, resources, global_view=False):
             group_colors[group] = pastel_color()
         return group_colors[group]
 
-    if global_view is False:
-        for pbn in PBNs:
-            for dag in pbn.dags:
-                for task in dag.tasks:
-                    target = task.dest_table
-                    sources = task.source_tables
-                    shapes = {
-                        "INCREMENTAL": "triangleDown",
-                        "FULL REFRESH": "triangle",
-                        "DELETE": "diamond",
-                        "COPY": "hexagon",
-                    }
+    for pbn in PBNs:
+        for dag in pbn.dags:
+            for task in dag.tasks:
+                target = task.dest_table
+                sources = task.source_tables
+                shapes = {
+                    "INCREMENTAL": "triangleDown",
+                    "FULL REFRESH": "triangle",
+                    "DELETE": "diamond",
+                    "COPY": "hexagon",
+                }
 
-                    if target not in targets_added:
-                        title_string = f"<b>PBN:</b> {pbn.name}<br><b>DAG:</b> {dag.name}<br><b>Table:</b> {target}<br><b>Write Disposition:</b> {task.write_disposition}<br><b>Task:</b> {task.task_id}"
-                        target_id = pbn.name + "-" + target
+                if target not in targets_added:
+                    title_string = f"<b>PBN:</b> {pbn.name}<br><b>DAG:</b> {dag.name}<br><b>Table:</b> {target}<br><b>Write Disposition:</b> {task.write_disposition}<br><b>Task:</b> {task.task_id}"
+                    target_id = pbn.name + "-" + target
+                    net.add_node(
+                        n_id=target_id,
+                        label=target,
+                        table_name=target,
+                        title=title_string,
+                        # group=dag.name,
+                        dag=dag.name,
+                        shape=shapes[task.write_disposition],
+                        pbn=pbn.name,
+                        table=target,
+                        size=25,
+                        color=(
+                            get_group_color(dag.name)
+                        ),  # Set color based on the group
+                    )
+                    targets_added.append(target_id)
+
+                for source in sources:
+                    group = "None"
+                    title_pbn = "None"
+                    
+                    for t in tasks:
+                        if source == t.dest_table:
+                            group = t.dag.name
+                            title_pbn = t.dag.pbn.name
+                            break
+
+                    title_string = f"<b>PBN:</b> {title_pbn}<br><b>DAG:</b> {group}<br><b>Table:</b> {source}"
+                    source_id = pbn.name + "-" + source
+                    if (
+                        source_id not in sources_added
+                        and source_id not in targets_added
+                        and not any(
+                            x == source_id
+                            for x in [
+                                pbn.name + "-" + task.dest_table for task in dag.tasks
+                            ]
+                        )
+                    ):
                         net.add_node(
-                            n_id=target_id,
-                            label=target,
-                            table_name=target,
+                            n_id=source_id,
+                            label=source,
+                            table_name=source,
                             title=title_string,
-                            # group=dag.name,
+                            # group=group,
                             dag=dag.name,
-                            shape=shapes[task.write_disposition],
                             pbn=pbn.name,
-                            table=target,
-                            size=25,
+                            table=source,
+                            size=15,
+                            opacity=0.8,
                             color=(
-                                get_group_color(dag.name)
+                                get_group_color(group) if group != "None" else "#d9d4d4"
                             ),  # Set color based on the group
                         )
-                        targets_added.append(target_id)
+                        sources_added.append(source_id)
+        # break
 
-                    for source in sources:
-                        group = "None"
-                        title_pbn = "None"
-                        for t in tasks:
-                            if source == t.dest_table:
-                                group = t.dag.name
-                                title_pbn = t.dag.pbn.name
-                                break
-
-                        title_string = f"<b>PBN:</b> {title_pbn}<br><b>DAG:</b> {group}<br><b>Table:</b> {source}"
-                        source_id = pbn.name + "-" + source
-                        if (
-                            source_id not in sources_added
-                            and source_id not in targets_added
-                            and not any(
-                                x == source_id
-                                for x in [
-                                    pbn.name + "-" + task.dest_table
-                                    for task in dag.tasks
-                                ]
-                            )
-                        ):
-                            net.add_node(
-                                n_id=source_id,
-                                label=source,
-                                table_name=source,
-                                title=title_string,
-                                # group=group,
-                                dag=dag.name,
-                                pbn=pbn.name,
-                                table=source,
-                                size=15,
-                                opacity=0.8,
-                                color=(
-                                    get_group_color(group)
-                                    if group != "None"
-                                    else "#d9d4d4"
-                                ),  # Set color based on the group
-                            )
-                            sources_added.append(source_id)
+    for pbn in PBNs:
+        for dag in pbn.dags:
+            for task in dag.tasks:
+                target_id = pbn.name + "-" + task.dest_table
+                for source in task.source_tables:
+                    source_id = pbn.name + "-" + source
+                    net.add_edge(source_id, target_id)
             # break
 
-        for pbn in PBNs:
-            for dag in pbn.dags:
-                for task in dag.tasks:
-                    target_id = pbn.name + "-" + task.dest_table
-                    for source in task.source_tables:
-                        source_id = pbn.name + "-" + source
-                        net.add_edge(source_id, target_id)
-            # break
+    ## Add views
+    ## ToDo: Adjust visualization so it's clear that it is a view. 
+    ## Also, make sure the sources are corectly colored according to the DAG they are created in
+    for view in views:
+        net.add_node(
+            n_id=source_id,
+            label=source,
+            table_name=source,
+            title=title_string,
+            # group=group,
+            dag=dag.name,
+            pbn=pbn.name,
+            table=source,
+            size=15,
+            opacity=0.8,
+            color=(
+                get_group_color(group) if group != "None" else "#d9d4d4"
+            ),  # Set color based on the group
+        )
+
+    for view in views:
+        full_name = "bigquery-analytics-workbench.ldw." + view.table_name
+        net.add_node(
+            n_id=full_name,
+            label=view.table_name,
+            table_name=view.table_name,
+            title=full_name,
+            dag="N/A",
+            pbn="N/A",
+            table="view: " + view.table_name,
+            size=15,
+            opacity=0.8,
+            color=(
+                get_group_color(group) if group != "None" else "#d9d4d4"
+            ),  # Set color based on the group
+        )
+
+        for source in view.source_tables:
+            net.add_node(
+                n_id=source,
+                label=source,
+                table_name=source,
+                title=source,
+                dag="N/A",
+                pbn="N/A",
+                table=source,
+                size=15,
+                opacity=0.8,
+                color=(
+                    get_group_color(group) if group != "None" else "#d9d4d4"
+                ),  # Set color based on the group
+            )
+
+            net.add_edge(source, full_name)
 
     # net.show_buttons()
     net.set_options(
@@ -583,63 +655,10 @@ def main():
         AIRFLOW_VAR_BI_OPERATIONS_SALESFORCE_PARAMETERS=AIRFLOW_VAR_BI_OPERATIONS_SALESFORCE_PARAMETERS,
     )
     assign_resources_and_define_tables(PBNs, dags, tasks, resources)
-    draw_network(PBNs, dags, tasks, resources)
+    
+    views = get_views()
+    draw_network(PBNs, dags, tasks, resources, views)
 
 
 if __name__ == "__main__":
-
-    from google.cloud import bigquery
-    from google.oauth2 import service_account
-
-    # main()
-    key_path = "client_secret.json"
-    credentials = service_account.Credentials.from_service_account_file(
-        key_path,
-        scopes=["https://www.googleapis.com/auth/cloud-platform"],
-    )
-    client = bigquery.Client(
-        credentials=credentials,
-        project="prd-data-teams-wfops-1",
-    )
-
-    query = """
-    SELECT table_name,view_definition
-    FROM `bigquery-analytics-workbench.ldw.INFORMATION_SCHEMA.VIEWS`
-    WHERE table_name IN ('fact_case', 'fact_contact', 'fact_contact_workload', 'fact_chat', 'fact_phone_call')
-    
-    UNION ALL 
-    
-    SELECT table_name,view_definition
-    FROM `bigquery-analytics-workbench.gold_read.INFORMATION_SCHEMA.VIEWS`
-    WHERE table_name IN ('fact_case', 'fact_contact', 'fact_contact_workload', 'fact_chat', 'fact_phone_call')
-    """
-    views = []
-    for row in list(client.query(query).result()):
-        view = View(table_name=row[0], sql_script=row[1])
-        view.define_source_tables()
-        views.append(view)
-
-        # Create Network Instance
-    net = Network(
-        height="95vh",
-        width="100%",
-        bgcolor="#ffffff",
-        # select_menu=True,
-        filter_menu=True,
-    )
-
-    sources_added = []
-    targets_added = []
-
-    for view in views:
-        net.add_node(
-            n_id=view.table_name,
-            label="bigquery-analytics-workbench.ldw." + view.table_name,
-            tview_name=view.table_name,
-            title=view.table_name,
-        )
-        for source in view.source_tables:
-            net.add_node(n_id=source, label=source, tview_name=source, title=source)
-
-            net.add_edge(view.table_name, source)
-    net.show("test2.html", notebook=False)
+    main()
