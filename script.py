@@ -278,14 +278,13 @@ def get_views():
     query = """
     SELECT table_name,view_definition
     FROM `bigquery-analytics-workbench.ldw.INFORMATION_SCHEMA.VIEWS`
-    WHERE table_name IN ('fact_case', 'fact_contact', 'fact_contact_workload', 'fact_chat', 'fact_phone_call')
+    WHERE table_name IN ('fact_case', 'fact_contact', 'fact_contact_workload', 'fact_chat', 'fact_phone_call', 'fact_case_interaction')
     
     UNION ALL 
     
     SELECT table_name,view_definition
     FROM `bigquery-analytics-workbench.gold_read.INFORMATION_SCHEMA.VIEWS`
-    WHERE table_name IN ('fact_case', 'fact_contact', 'fact_contact_workload', 'fact_chat', 'fact_phone_call')
-    """
+    WHERE table_name IN ('fact_case', 'fact_contact', 'fact_contact_workload', 'fact_chat', 'fact_phone_call', 'fact_case_interaction')    """
 
     views = []
     print("Fetching views from bigquery-analytics-workbench")
