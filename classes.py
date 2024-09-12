@@ -233,7 +233,6 @@ class View:
         self.table_name = table_name
         self.sql_script = sql_script
         self.source_tables = []
-        self.dataset = "workbench.ldw"
 
     def define_source_tables(self):
         regexp = re.compile(
