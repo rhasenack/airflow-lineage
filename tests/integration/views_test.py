@@ -30,8 +30,6 @@ class ViewTest(TestCase):
                 v = view
 
         # Has to have views
-        self.assertIn("prd-data-ldw-salesforce-1.ldw.fact_case_email", v.source_tables)
-        self.assertIn(
-            "prd-data-ldw-salesforce-1.ldw.fact_case_social_post", v.source_tables
-        )
-        self.assertIn("bigquery-analytics-workbench.ldw.fact_case", v.source_tables)
+        self.assertIn("ldw.fact_case_email", v.source_tables)
+        self.assertIn("ldw.fact_case_social_post", v.source_tables)
+        self.assertIn("ldw.fact_case", v.source_tables)

@@ -246,13 +246,9 @@ class View:
         matches = re.findall(regexp, sql)
 
         for match in matches:
-            source_project_string = match.__getitem__(0)
+            # source_project_string = match.__getitem__(0)
             source_dataset_string = match.__getitem__(1)
             source_table_string = match.__getitem__(2)
-            self.source_tables.append(
-                source_project_string
-                + "."
-                + source_dataset_string
-                + "."
-                + source_table_string
-            )
+            regexp = re.compile(r"_\d{8}T\d{6}")
+            source_table_string = re.sub(regexp, "_LR", source_table_string)
+            self.source_tables.append(source_dataset_string + "." + source_table_string)

@@ -284,7 +284,7 @@ def get_views():
     
     SELECT table_name,view_definition
     FROM `bigquery-analytics-workbench.gold_read.INFORMATION_SCHEMA.VIEWS`
-    WHERE table_name IN ('fact_case', 'fact_contact', 'fact_contact_workload', 'fact_chat', 'fact_phone_call', 'fact_case_interaction')    """
+    WHERE table_name IN ( 'fact_chat', 'fact_phone_call')    """
 
     views = []
     print("Fetching views from bigquery-analytics-workbench")
@@ -296,8 +296,8 @@ def get_views():
 
 
 def draw_network(PBNs, dags, tasks, resources, views):
-    
-    print('Drawing Network')
+
+    print("Drawing Network")
 
     # Create Network Instance
     net = Network(
@@ -360,7 +360,7 @@ def draw_network(PBNs, dags, tasks, resources, views):
                 for source in sources:
                     group = "None"
                     title_pbn = "None"
-                    
+
                     for t in tasks:
                         if source == t.dest_table:
                             group = t.dag.name
@@ -407,40 +407,26 @@ def draw_network(PBNs, dags, tasks, resources, views):
             # break
 
     ## Add views
-    ## ToDo: Adjust visualization so it's clear that it is a view. 
-    ## Also, make sure the sources are corectly colored according to the DAG they are created in
-    for view in views:
-        net.add_node(
-            n_id=source_id,
-            label=source,
-            table_name=source,
-            title=title_string,
-            # group=group,
-            dag=dag.name,
-            pbn=pbn.name,
-            table=source,
-            size=15,
-            opacity=0.8,
-            color=(
-                get_group_color(group) if group != "None" else "#d9d4d4"
-            ),  # Set color based on the group
-        )
 
     for view in views:
         full_name = "bigquery-analytics-workbench.ldw." + view.table_name
+
+        # title_string = f"<b>PBN:</b> {title_pbn}<br><b>DAG:</b> {group}<br><b>Table:</b> {source}"
+
+        view_title = f"<b>View Name:</b>{full_name}<br>"
         net.add_node(
             n_id=full_name,
             label=view.table_name,
             table_name=view.table_name,
-            title=full_name,
+            title=view_title,
             dag="N/A",
             pbn="N/A",
             table="view: " + view.table_name,
-            size=15,
-            opacity=0.8,
-            color=(
-                get_group_color(group) if group != "None" else "#d9d4d4"
-            ),  # Set color based on the group
+            size=25,
+            shape="square",
+            # color=(
+            #     get_group_color('test') if 'test' != "None" else "#d9d4d4"
+            # ),  # Set color based on the group
         )
 
         for source in view.source_tables:
@@ -454,9 +440,7 @@ def draw_network(PBNs, dags, tasks, resources, views):
                 table=source,
                 size=15,
                 opacity=0.8,
-                color=(
-                    get_group_color(group) if group != "None" else "#d9d4d4"
-                ),  # Set color based on the group
+                color="#d9d4d4",  # Set color based on the group
             )
 
             net.add_edge(source, full_name)
@@ -654,7 +638,7 @@ def main():
         AIRFLOW_VAR_BI_OPERATIONS_SALESFORCE_PARAMETERS=AIRFLOW_VAR_BI_OPERATIONS_SALESFORCE_PARAMETERS,
     )
     assign_resources_and_define_tables(PBNs, dags, tasks, resources)
-    
+
     views = get_views()
     draw_network(PBNs, dags, tasks, resources, views)
 
