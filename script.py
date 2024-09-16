@@ -28,6 +28,7 @@ def create_pbns(start_path) -> list[PBN]:
                     else os.path.join(resources_folder, folder)
                 ),
             )
+            # if pbn.name == "data-core-secaselog":
             PBNs.append(pbn)
 
     return PBNs
@@ -325,21 +326,28 @@ def draw_network(PBNs, dags, tasks, resources, views):
             group_colors[group] = pastel_color()
         return group_colors[group]
 
+    shapes = {
+        "INCREMENTAL": "triangleDown",
+        "FULL REFRESH": "triangle",
+        "DELETE": "diamond",
+        "COPY": "hexagon",
+        "UPDATE": "star",
+    }
+
     for pbn in PBNs:
         for dag in pbn.dags:
             for task in dag.tasks:
                 target = task.dest_table
+                if task.write_disposition == "UPDATE":
+                    target_id = "update" + pbn.name + "-" + task.dest_table
+                else:
+                    target_id = pbn.name + "-" + task.dest_table
+
                 sources = task.source_tables
-                shapes = {
-                    "INCREMENTAL": "triangleDown",
-                    "FULL REFRESH": "triangle",
-                    "DELETE": "diamond",
-                    "COPY": "hexagon",
-                }
 
                 if target not in targets_added:
                     title_string = f"<b>PBN:</b> {pbn.name}<br><b>DAG:</b> {dag.name}<br><b>Table:</b> {target}<br><b>Write Disposition:</b> {task.write_disposition}<br><b>Task:</b> {task.task_id}"
-                    target_id = pbn.name + "-" + target
+
                     net.add_node(
                         n_id=target_id,
                         label=target,
@@ -400,7 +408,10 @@ def draw_network(PBNs, dags, tasks, resources, views):
     for pbn in PBNs:
         for dag in pbn.dags:
             for task in dag.tasks:
-                target_id = pbn.name + "-" + task.dest_table
+                if task.write_disposition == "UPDATE":
+                    target_id = "update" + pbn.name + "-" + task.dest_table
+                else:
+                    target_id = pbn.name + "-" + task.dest_table
                 for source in task.source_tables:
                     source_id = pbn.name + "-" + source
                     net.add_edge(source_id, target_id)
@@ -556,7 +567,7 @@ def draw_network(PBNs, dags, tasks, resources, views):
                 );
 
                 for (const id of matchingKeys) {
-                nodes.update({ id: id, size: 50 });
+                nodes.update({ id: id, size: 70 });
                 enlargedNodes.push(id);
                 }
                 // All others should go back to original size

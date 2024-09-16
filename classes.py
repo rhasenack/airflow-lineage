@@ -151,15 +151,17 @@ class Task:
             else:
                 dest_table = dest_table_string
 
+            self.dest_dataset = dest_dataset
+
             self.dest_table = dest_dataset + "." + dest_table
 
         # Set Target Type
         if any(x in self.dml_statement.upper() for x in ["CREATE"]):
             self.write_disposition = "FULL REFRESH"
-        elif any(
-            x in self.dml_statement.upper() for x in ["INSERT", "UPDATE", "MERGE"]
-        ):
+        elif any(x in self.dml_statement.upper() for x in ["INSERT", "MERGE"]):
             self.write_disposition = "INCREMENTAL"
+        elif any(x in self.dml_statement.upper() for x in ["UPDATE"]):
+            self.write_disposition = "UPDATE"
         elif any(x in self.dml_statement.upper() for x in ["DELETE"]):
             self.write_disposition = "DELETE"
 
@@ -223,9 +225,13 @@ class Task:
             else:
                 source_table = source_table_string
 
-            ## If source table is the same as the dest table, ignore
+            ## If source table is the same as the dest table, ignore, unless the dml statemente is UPDATE
             if source_dataset + "." + source_table != self.dest_table:
                 self.source_tables.append(source_dataset + "." + source_table)
+
+            ## If it's update, add the table itself to the sources
+        if self.write_disposition == "UPDATE":
+            self.source_tables.append(self.dest_table)
 
 
 class View:
