@@ -82,6 +82,10 @@ class Task:
         # If there's a function parameter called dest_table, this is directly the task's dest_table
         if hasattr(self, "dest_table"):
             # print("destination table already set")
+
+            if not hasattr(self, "dest_dataset"):
+                raise AttributeError("No dest_dataset defined")
+
             dest_dataset = (
                 self.dag.bq_parameters[self.dest_dataset]
                 if "BQ_" in self.dest_dataset
@@ -89,6 +93,12 @@ class Task:
             )
             dest_table = self.dest_table
             self.dest_table = dest_dataset + "." + self.dest_table
+
+            if self.type != "run_copy_table_dml":
+                if not hasattr(self, "write_disposition"):
+                    raise AttributeError("No write_disposition defined")
+                if self.write_disposition not in ["WRITE_APPEND", "WRITE_TRUNCATE"]:
+                    raise AttributeError("write_disposition incorrectly defined")
 
             # Set DML type
             if self.type != "run_copy_table_dml":
@@ -99,23 +109,21 @@ class Task:
                 )
             else:
                 self.write_disposition = "COPY"
-
             return
 
         # If there's no resoucre assigned to the task, we're unable to get the dest_table from the sql script. This, in theory, shouldn't happen.
         if not hasattr(self, "resource") or self.resource is None:
-            print("Resource not assinged to task")
-            return
+            raise AttributeError("No Resource Defined")
 
         # If not in previous scenarios, he table is fetched by looking for dml statements and the tables with REGEX.
         else:
             sql = self.resource.script_content
             regexp = re.compile(
-                r".*?(INSERT|UPDATE|DELETE|MERGE|CREATE .+?TABLE).+?\s+.?(`.+?`)",
+                r"(INSERT|UPDATE|DELETE|MERGE|CREATE .+?TABLE)\s+?.*?(`.+?`)",
                 flags=re.S | re.I,
             )
 
-            match = re.match(regexp, sql)
+            match = re.search(regexp, sql)
 
             dml_statement = match.__getitem__(1)
             self.dml_statement = dml_statement
@@ -143,15 +151,17 @@ class Task:
             else:
                 dest_table = dest_table_string
 
+            self.dest_dataset = dest_dataset
+
             self.dest_table = dest_dataset + "." + dest_table
 
         # Set Target Type
         if any(x in self.dml_statement.upper() for x in ["CREATE"]):
             self.write_disposition = "FULL REFRESH"
-        elif any(
-            x in self.dml_statement.upper() for x in ["INSERT", "UPDATE", "MERGE"]
-        ):
+        elif any(x in self.dml_statement.upper() for x in ["INSERT", "MERGE"]):
             self.write_disposition = "INCREMENTAL"
+        elif any(x in self.dml_statement.upper() for x in ["UPDATE"]):
+            self.write_disposition = "UPDATE"
         elif any(x in self.dml_statement.upper() for x in ["DELETE"]):
             self.write_disposition = "DELETE"
 
@@ -159,21 +169,32 @@ class Task:
         """Define the source tables of the task. Depending on the task, it can be a direct parameter of the function or it might have to be fetched from the SQL script.
         A given task will have only one destination, but might have several sources"""
 
+        if not hasattr(self, "dest_table"):
+            raise AttributeError("No destination table set")
+
         # If there's a function parameter called dest_table, this is directly the task's dest_table
         if hasattr(self, "source_table"):
+            source_dataset = (
+                self.dag.bq_parameters[self.dest_dataset]
+                if "BQ_" in self.dest_dataset
+                else self.dest_dataset
+            )
             self.source_tables.append(self.source_dataset + "." + self.source_table)
             return
 
         # If there's no resoucre assigned to the task, we're unable to get the source_tables from the sql script. This, in theory, shouldn't happen.
-        if self.resource is None:
-            print("Resource not assinged to task")
-            return
+        if not hasattr(self, "resource") or self.resource is None:
+            raise AttributeError("No Resource Defined")
 
         # Else, using regex, we get the tables that are referenced in the SQL script.
         sql = self.resource.script_content
         regexp = re.compile(
-            r"\`(_project-\d{1,2}_|.+?)\.(_dataset-\d{1,2}_|.+?)\.(_table-\d{1,2}_|.+?)\`"
+            r"(?:\`{0,1}|\s)(_project-\d{1,2}_|\w+?)\.(_dataset-\d{1,2}_|\w+?)\.(_table-\d{1,2}_|\w+)(?:\`{0,1}|\s)"
         )
+
+        # Remove commented lines that shouldn't be consideres
+        rexep_commented = re.compile(r"(\-\-.+?\n)")
+        sql = re.sub(pattern=rexep_commented, repl="", string=sql)
 
         matches = re.findall(regexp, sql)
 
@@ -204,6 +225,36 @@ class Task:
             else:
                 source_table = source_table_string
 
-            ## If source table is the same as the dest table, ignore
+            ## If source table is the same as the dest table, ignore, unless the dml statemente is UPDATE
             if source_dataset + "." + source_table != self.dest_table:
                 self.source_tables.append(source_dataset + "." + source_table)
+
+            ## If it's update, add the table itself to the sources
+        if self.write_disposition == "UPDATE":
+            self.source_tables.append(self.dest_table)
+
+
+class View:
+    def __init__(self, table_name, sql_script) -> None:
+        self.table_name = table_name
+        self.sql_script = sql_script
+        self.source_tables = []
+
+    def define_source_tables(self):
+        regexp = re.compile(
+            r"(?:\-*?`)(.+?)\.(_dataset-\d{1,2}_|\w+?)\.(\w+)(?:\`{0,1}|\s)"
+        )
+
+        # Remove commented lines that shouldn't be consideres
+        rexep_commented = re.compile(r"(\-\-.+?\n)")
+        sql = re.sub(pattern=rexep_commented, repl="", string=self.sql_script)
+
+        matches = re.findall(regexp, sql)
+
+        for match in matches:
+            # source_project_string = match.__getitem__(0)
+            source_dataset_string = match.__getitem__(1)
+            source_table_string = match.__getitem__(2)
+            regexp = re.compile(r"_\d{8}T\d{6}")
+            source_table_string = re.sub(regexp, "_LR", source_table_string)
+            self.source_tables.append(source_dataset_string + "." + source_table_string)
