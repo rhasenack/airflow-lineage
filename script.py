@@ -455,8 +455,7 @@ def draw_network(PBNs, dags, tasks, resources, views):
             )
 
             net.add_edge(source, full_name)
-
-    # net.show_buttons()
+    # net.show_buttons(filter_=["physics"])
     net.set_options(
         """ const options = {
         "nodes": {
@@ -477,7 +476,17 @@ def draw_network(PBNs, dags, tasks, resources, views):
             "selfReference": {
             "angle": 0.7853981633974483
             },
-            "smooth": false
+            "smooth": true
+        },
+        "physics": {
+            "barnesHut": {
+            "theta": 0.15,
+            "gravitationalConstant": -5850,
+            "centralGravity": 0,
+            "springLength": 210,
+            "avoidOverlap": 0.5
+            },
+            "minVelocity": 0.75
         }
         } """
     )
