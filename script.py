@@ -455,6 +455,7 @@ def draw_network(PBNs, dags, tasks, resources, views):
             )
 
             net.add_edge(source, full_name)
+
     # net.show_buttons(filter_=["physics"])
     net.set_options(
         """ const options = {
@@ -476,7 +477,10 @@ def draw_network(PBNs, dags, tasks, resources, views):
             "selfReference": {
             "angle": 0.7853981633974483
             },
-            "smooth": true
+            "smooth": {
+                "enabled": true,
+                "type": "dynamic"
+            }
         },
         "physics": {
             "barnesHut": {
@@ -498,7 +502,7 @@ def draw_network(PBNs, dags, tasks, resources, views):
 
         # Search for the stabilizationIterationsDone event and insert the network.setOptions line
         pattern = r'(network.once\("stabilizationIterationsDone", function\(\) {)'
-        replacement = r"\1\n\t\t\t\t\t\t  // Disable the physics after stabilization is done.\n\t\t\t\t\t\t  network.setOptions({ physics: false });"
+        replacement = r"\1\n\t\t\t\t\t\t  // Disable the physics after stabilization is done.\n\t\t\t\t\t\t  network.setOptions({ physics: false });\n\t\t\t\t\t\t setSmoothType('continuous'); "
 
         new_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
 
@@ -621,6 +625,83 @@ def draw_network(PBNs, dags, tasks, resources, views):
                 false
             );
                 """
+
+        new_content = new_content.replace(pattern, replacement)
+
+        pattern = """        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };"""
+
+        replacement = """        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };
+              
+    function setSmoothType(type) {
+        var options = {
+        edges: {
+            smooth: {
+            type: type
+            }
+        }
+        };
+        network.setOptions(options);
+    }
+
+    function togglePhysics(state) {
+        var options = {
+        physics: {
+            enabled: state
+        }
+        };
+        network.setOptions(options);
+    }
+    """
+
+        new_content = new_content.replace(pattern, replacement)
+
+        pattern = """              </div>
+            
+            <div id="mynetwork" class="card-body"></div>
+        """
+
+        replacement = """                <button onclick="setSmoothType('dynamic')">Dynamic</button>
+                <button onclick="setSmoothType('continuous')">Continuous</button>
+                <button onclick="togglePhysics(true)">Enable Physics</button>
+                <button onclick="togglePhysics(false)">Disable Physics</button>
+                <div id="mynetwork" class="card-body"></div>
+              </div>
+            
+            <div id="mynetwork" class="card-body"></div>
+        
+        """
 
         new_content = new_content.replace(pattern, replacement)
 
