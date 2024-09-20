@@ -227,3 +227,22 @@ class TaskTest(TestCase):
             t.source_tables,
             ["salesforce.emailmessage", "ldw.fact_caselog", "ldw_stg.fact_case_email"],
         )
+
+    def test_define_source_tables_for_update_DML(self):
+        t = Task(name="Test", type="TaskType")
+        query = """UPDATE `project.dataset.table`
+            SET a.name = B.name
+        FROM `project2.dataset2.table_name` B
+        WHERE 1=1
+        """
+
+        r = Resource(name="r1", pbn="PBN", path="resource_path", script_content=query)
+
+        t.resource = r
+
+        t.define_dest_table()
+        t.define_source_tables()
+
+        self.assertEqual(t.dest_table, "dataset.table")
+        self.assertIn("dataset.table", t.source_tables)
+        self.assertIn("dataset2.table_name", t.source_tables)
