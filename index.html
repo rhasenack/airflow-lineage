@@ -362,7 +362,6 @@
         },
         false
       );
-
       // explicitly using onItemAdd and this function as we need to save multiple values
       let updateValueFilter = function () {
         return function () {
@@ -382,6 +381,7 @@
         },
         onItemAdd: updateValueFilter(),
       });
+
 
       let addValues = function () {
         return function () {
