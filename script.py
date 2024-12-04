@@ -46,8 +46,11 @@ def create_tasks_and_resources(
     for pbn in PBNs:
         print(f"Processing {pbn.name}")
 
-        # For the MVP, ignore this one since the structure is different from the rest.
-        if pbn.name == "data-core-seprojectmanagement":
+        # For the MVP, ignore this one since the structure is different from the rest. To be fixed in a later iteration
+        if (
+            pbn.name == "data-core-seprojectmanagement"
+            or pbn.name == "data-core-serecontact"
+        ):
             continue
 
         # Iterate to get DAGs and Tasks
